@@ -128,7 +128,7 @@ const saveDataAsCSVFile = async (data, dirAndFileName) => {
     }
 
     await saveDataAsJsonFile(resultsArr, "scraped_parts_json");
-    await saveDataAsCSVFile(resultsArr, "scraped_products_csv");
+    await saveDataAsCSVFile(resultsArr, "scraped_parts_csv");
     await saveSparePartsImage(resultsArr);
     let elapsed = Date.now() - startTime;
     await sleep(1500);
