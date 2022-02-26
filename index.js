@@ -1,9 +1,12 @@
 const https = require("https");
 const baseUrl = "http://harley-davidson.com";
+const htmlEntity = require("html-entities");
+const ObjectsToCsv = require("objects-to-csv");
 
 const fs = require("fs");
 const request = require("request");
-const { resolve } = require("path");
+
+const rootImageDir = "images";
 
 function sleep(ms) {
     return new Promise((resolve) => {
@@ -11,25 +14,26 @@ function sleep(ms) {
     });
 }
 
-const saveSpareParts = async (sparePartsArr) => {
+const saveSparePartsImage = async (sparePartsArr) => {
     var download = function (uri, filename, directory, callback) {
         request.head(uri, function (err, body) {
-            if (!fs.existsSync(directory)) {
-                fs.mkdirSync(directory);
+            if (!fs.existsSync(rootImageDir)) {
+                fs.mkdirSync(rootImageDir);
             }
             request(uri)
-                .pipe(fs.createWriteStream(`${directory}/${filename}`))
+                .pipe(fs.createWriteStream(`${rootImageDir}/${filename}`))
                 .on("close", callback);
         });
     };
     for (const item of sparePartsArr) {
         var i = 1;
         for (const imageUrl of item.imageUrls) {
-            await sleep(100); // Wait a second between each scrape. This is necessary to not send too many requests at a time
+            await sleep(100); // Wait 100 ms between each scrape. This is necessary to not send too many requests at a time
+            var path = require("path");
             download(
                 `${baseUrl}${imageUrl}`,
-                `img-${i}.png`,
-                `images/${item.productCode}`,
+                `${path.parse(imageUrl).base}.png`,
+                `${rootImageDir}/${item.productCode}`,
                 function () {
                     console.log(`Downloaded: ${imageUrl}`);
                 }
@@ -60,10 +64,14 @@ const fetchItemsWithPagination = async (itemsPerRequest, page) => {
                     ].filter((x) => x !== "");
 
                     fetchedItemsArr.push({
-                        name: item.formattedName,
-                        description: item.description,
                         productCode: item.baseProductCode,
+                        name: item.formattedName,
+                        description: htmlEntity.decode(item.description),
+                        productUrl: `${baseUrl}${item.pdpProductUrl}`,
+                        categoryCode: htmlEntity.decode(item.categoryCode),
+                        categoryName: htmlEntity.decode(item.categoryName),
                         imageUrls: imageUrls,
+                        date: new Date().toISOString().split("T")[0],
                     });
                 }
 
@@ -81,14 +89,30 @@ const fetchItemsWithPagination = async (itemsPerRequest, page) => {
     });
 };
 
-function millisToMinutesAndSeconds(millis) {
+const millisToMinutesAndSeconds = (millis) => {
     var minutes = Math.floor(millis / 60000);
     var seconds = ((millis % 60000) / 1000).toFixed(0);
     return minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
-}
+};
+
+const saveDataAsJsonFile = async (data, dirAndFileName) => {
+    return fs.writeFile(
+        `${dirAndFileName}.json`,
+        JSON.stringify(data),
+        function (err) {
+            if (err) throw err;
+        }
+    );
+};
+
+const saveDataAsCSVFile = async (data, dirAndFileName) => {
+    const csv = new ObjectsToCsv(data);
+    await csv.toDisk(`${dirAndFileName}.csv`);
+    return csv.toString();
+};
 
 (async () => {
-    console.log("Scraping...");
+    console.log("Scraping... Please wait.");
     var startTime = Date.now();
     let resultsArr = [];
     let hasNextPage = true;
@@ -103,15 +127,9 @@ function millisToMinutesAndSeconds(millis) {
         page++;
     }
 
-    fs.writeFile(
-        "scrapedData.json",
-        JSON.stringify(resultsArr),
-        function (err) {
-            if (err) throw err;
-        }
-    );
-
-    await saveSpareParts(resultsArr);
+    await saveDataAsJsonFile(resultsArr, "scraped_parts_json");
+    await saveDataAsCSVFile(resultsArr, "scraped_products_csv");
+    await saveSparePartsImage(resultsArr);
     let elapsed = Date.now() - startTime;
     await sleep(1500);
     console.log("Finished in", millisToMinutesAndSeconds(elapsed) + " minutes");
