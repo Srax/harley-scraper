@@ -117,8 +117,8 @@ const saveDataAsCSVFile = async (data, dirAndFileName) => {
     let resultsArr = [];
     let hasNextPage = true;
     let page = 1;
-    while (hasNextPage) {
-        const newCall = await fetchItemsWithPagination(500, page);
+    while (hasNextPage && page < 2) {
+        const newCall = await fetchItemsWithPagination(10, page);
         console.log(`Fetching items from page: ${page}`);
         resultsArr = resultsArr.concat(newCall.results);
         if (newCall.pagination.next.length <= 2) {
