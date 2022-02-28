@@ -43,50 +43,64 @@ const saveSparePartsImage = async (sparePartsArr) => {
     }
 };
 
-const fetchItemsWithPagination = async (itemsPerRequest, page) => {
-    const url = `https://www.harley-davidson.com/search/?format=json;i=1;locale=da_DK;page=${page};q1=parts;q2=motorcycle-parts;sp_c=${itemsPerRequest};x1=primaryCategoryCode;x2=superCategoryCodes;sp_cs=UTF-8`;
-    return new Promise((resolve) => {
+const getDataFromApi = async (url) => {
+    return await new Promise((resolve) => {
         https.get(url, (res) => {
             let data = [];
             res.on("data", (chunk) => {
                 data.push(chunk);
             });
 
+            res.on("error", (e) => {
+                console.error(e);
+            });
+
             res.on("end", () => {
-                const parts = JSON.parse(Buffer.concat(data).toString());
-                const pagination = parts.pagination[0];
-                const pickedPartsArr = parts.resultsets[0].results;
-                const fetchedItemsArr = [];
-                for (const item of pickedPartsArr) {
-                    let imageUrls = [
-                        `${item.primaryThumbnailUrl}`,
-                        `${item.hoverThumbnailUrl}`,
-                    ].filter((x) => x !== "");
-
-                    fetchedItemsArr.push({
-                        productCode: item.baseProductCode,
-                        name: item.formattedName,
-                        description: htmlEntity.decode(item.description),
-                        productUrl: `${baseUrl}${item.pdpProductUrl}`,
-                        categoryCode: htmlEntity.decode(item.categoryCode),
-                        categoryName: htmlEntity.decode(item.categoryName),
-                        imageUrls: imageUrls,
-                        date: new Date().toISOString().split("T")[0],
-                    });
-                }
-
-                resolve({
-                    pagination: {
-                        current: pagination.current,
-                        next: pagination.next,
-                        previous: pagination.previous,
-                        last: pagination.last,
-                    },
-                    results: fetchedItemsArr,
-                });
+                resolve(JSON.parse(Buffer.concat(data).toString()));
             });
         });
     });
+};
+
+const fetchItemsWithPagination = async (itemsPerRequest, page) => {
+    const url = `https://www.harley-davidson.com/search/?format=json;i=1;locale=da_DK;page=${page};q1=parts;q2=motorcycle-parts;sp_c=${itemsPerRequest};x1=primaryCategoryCode;x2=superCategoryCodes;sp_cs=UTF-8`;
+    const parts = await getDataFromApi(url);
+    const pagination = parts.pagination[0];
+    const pickedPartsArr = parts.resultsets[0].results;
+    const fetchedItemsArr = [];
+    for (const item of pickedPartsArr) {
+        await sleep(50);
+        const extraDetails = await getDataFromApi(
+            `https://www.harley-davidson.com/dk/da/api-commerce/product/${item.baseProductCode}/get-fitment`
+        );
+
+        let imageUrls = [
+            `${item.primaryThumbnailUrl}`,
+            `${item.hoverThumbnailUrl}`,
+        ].filter((x) => x !== "");
+
+        fetchedItemsArr.push({
+            productCode: item.baseProductCode,
+            name: item.formattedName,
+            description: htmlEntity.decode(item.description),
+            details: extraDetails.part.hdFitmentCopy,
+            productUrl: `${baseUrl}${item.pdpProductUrl}`,
+            categoryCode: htmlEntity.decode(item.categoryCode),
+            categoryName: htmlEntity.decode(item.categoryName),
+            imageUrls: imageUrls,
+            date: new Date().toISOString().split("T")[0],
+        });
+    }
+
+    return {
+        pagination: {
+            current: pagination.current,
+            next: pagination.next,
+            previous: pagination.previous,
+            last: pagination.last,
+        },
+        results: fetchedItemsArr,
+    };
 };
 
 const millisToMinutesAndSeconds = (millis) => {
@@ -117,9 +131,10 @@ const saveDataAsCSVFile = async (data, dirAndFileName) => {
     let resultsArr = [];
     let hasNextPage = true;
     let page = 1;
-    while (hasNextPage && page < 2) {
-        const newCall = await fetchItemsWithPagination(10, page);
+    while (hasNextPage) {
+        const newCall = await fetchItemsWithPagination(100, page);
         console.log(`Fetching items from page: ${page}`);
+
         resultsArr = resultsArr.concat(newCall.results);
         if (newCall.pagination.next.length <= 2) {
             hasNextPage = false;
