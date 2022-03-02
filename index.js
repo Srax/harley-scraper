@@ -195,6 +195,7 @@ const saveDataAsCSVFile = async (data, dirAndFileName) => {
     } catch (error) {
         console.log(error.message);
     } finally {
+        await sleep(10000);
         elapsed = Date.now() - startTime;
         console.log(
             "Finished in",
