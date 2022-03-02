@@ -1,17 +1,21 @@
 const https = require("https");
+const http = require("http");
 const baseUrl = "http://harley-davidson.com";
 const htmlEntity = require("html-entities");
 const ObjectsToCsv = require("objects-to-csv");
+const fetch = require("node-fetch-retry");
 
-const keepAliveAgent = new https.Agent({
-    keepAlive: true,
-    maxSockets: Infinity,
-});
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 70 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 70 });
+const agent = (_parsedURL) =>
+    _parsedURL.protocol == "http:" ? httpAgent : httpsAgent;
 
 const fs = require("fs");
 const request = require("request");
 
 const rootImageDir = "images";
+var startTime = null;
+var elapsed = null;
 
 function sleep(ms) {
     return new Promise((resolve) => {
@@ -54,22 +58,19 @@ const saveSparePartsImage = async (sparePartsArr) => {
 
 const getDataFromApi = async (url) => {
     try {
-        return await new Promise((resolve) => {
-            https.get(url, keepAliveAgent, (res) => {
-                let data = [];
-                res.on("data", (chunk) => {
-                    data.push(chunk);
-                });
-
-                res.on("error", (e) => {
-                    console.error(e);
-                });
-
-                res.on("end", () => {
-                    resolve(JSON.parse(Buffer.concat(data).toString()));
-                });
-            });
-        });
+        return await fetch(url, {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+            retry: 5,
+            pause: 1000, // 1 second
+            callback: (retry) => {
+                console.log(`Retrying: ${retry}`);
+            },
+            // agent, // For some reason the agent is causing memory leaks, so it's disabled until node-fetch solves this issue
+        })
+            .then((res) => res.json())
+            .then((data) => data)
+            .catch((err) => console.log(err));
     } catch (error) {
         console.log(error);
     }
@@ -83,7 +84,7 @@ const fetchItemsWithPagination = async (itemsPerRequest, page) => {
         const pickedPartsArr = parts.resultsets[0].results;
         const fetchedItemsArr = [];
         for (const item of pickedPartsArr) {
-            await sleep(50); // Wait 50 ms between each scrape. This is necessary to not send too many requests at a time
+            await sleep(100); // Wait 100 ms between each scrape. This is necessary to not send too many requests at a time
             const extraDetails = await getDataFromApi(
                 `https://www.harley-davidson.com/dk/da/api-commerce/product/${item.baseProductCode}/get-fitment`
             );
@@ -170,13 +171,13 @@ const saveDataAsCSVFile = async (data, dirAndFileName) => {
 (async () => {
     try {
         console.log("Scraping... Please wait.");
-        var startTime = Date.now();
+        startTime = Date.now();
         let resultsArr = [];
         let hasNextPage = true;
         let page = 1;
         while (hasNextPage) {
-            console.log(`Fetching items from page: ${page}`);
-            const newCall = await fetchItemsWithPagination(100, page);
+            console.log(`==== Fetching items from page: ${page} ====`);
+            const newCall = await fetchItemsWithPagination(500, page);
 
             resultsArr = resultsArr.concat(newCall.results);
             if (newCall.pagination.next.length <= 2) {
@@ -185,16 +186,19 @@ const saveDataAsCSVFile = async (data, dirAndFileName) => {
             page++;
         }
 
+        console.log(`==== Generating JSON file  ====`);
         await saveDataAsJsonFile(resultsArr, "scraped_parts_json");
+        console.log(`==== Generating CSV file ====`);
         await saveDataAsCSVFile(resultsArr, "scraped_parts_csv");
+        console.log(`==== Downloading Images ====`);
         await saveSparePartsImage(resultsArr);
-        let elapsed = Date.now() - startTime;
-        await sleep(3000);
+    } catch (error) {
+        console.log(error.message);
+    } finally {
+        elapsed = Date.now() - startTime;
         console.log(
             "Finished in",
             millisToMinutesAndSeconds(elapsed) + " minutes"
         );
-    } catch (error) {
-        console.log(error.message);
     }
 })();
