@@ -71,7 +71,7 @@ const getDataFromApi = async (url) => {
             });
         });
     } catch (error) {
-        console.log(error.message);
+        console.log(error);
     }
 };
 
@@ -83,7 +83,7 @@ const fetchItemsWithPagination = async (itemsPerRequest, page) => {
         const pickedPartsArr = parts.resultsets[0].results;
         const fetchedItemsArr = [];
         for (const item of pickedPartsArr) {
-            await sleep(100); // Wait 100 ms between each scrape. This is necessary to not send too many requests at a time
+            await sleep(50); // Wait 50 ms between each scrape. This is necessary to not send too many requests at a time
             const extraDetails = await getDataFromApi(
                 `https://www.harley-davidson.com/dk/da/api-commerce/product/${item.baseProductCode}/get-fitment`
             );
@@ -108,8 +108,11 @@ const fetchItemsWithPagination = async (itemsPerRequest, page) => {
                 description: htmlEntity.decode(item.description),
                 details: productDetail,
                 productUrl: `${baseUrl}${item.pdpProductUrl}`,
-                primaryCategoryCode: htmlEntity.decode(item.parentCategoryCode),
-                primaryCategoryName: htmlEntity.decode(item.parentCategoryName),
+                primaryCategoryCode: htmlEntity.decode(
+                    item.primaryCategoryCode
+                ),
+                parentCategoryCode: htmlEntity.decode(item.parentCategoryCode),
+                parentCategoryName: htmlEntity.decode(item.parentCategoryName),
                 subCategoryCode: htmlEntity.decode(item.categoryCode),
                 subCategoryName: htmlEntity.decode(item.categoryName),
                 imageUrls: imageUrls,
@@ -173,7 +176,7 @@ const saveDataAsCSVFile = async (data, dirAndFileName) => {
         let page = 1;
         while (hasNextPage) {
             console.log(`Fetching items from page: ${page}`);
-            const newCall = await fetchItemsWithPagination(500, page);
+            const newCall = await fetchItemsWithPagination(100, page);
 
             resultsArr = resultsArr.concat(newCall.results);
             if (newCall.pagination.next.length <= 2) {
