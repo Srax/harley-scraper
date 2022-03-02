@@ -108,8 +108,10 @@ const fetchItemsWithPagination = async (itemsPerRequest, page) => {
                 description: htmlEntity.decode(item.description),
                 details: productDetail,
                 productUrl: `${baseUrl}${item.pdpProductUrl}`,
-                categoryCode: htmlEntity.decode(item.categoryCode),
-                categoryName: htmlEntity.decode(item.categoryName),
+                primaryCategoryCode: htmlEntity.decode(item.parentCategoryCode),
+                primaryCategoryName: htmlEntity.decode(item.parentCategoryName),
+                subCategoryCode: htmlEntity.decode(item.categoryCode),
+                subCategoryName: htmlEntity.decode(item.categoryName),
                 imageUrls: imageUrls,
                 date: new Date().toISOString().split("T")[0],
             });
